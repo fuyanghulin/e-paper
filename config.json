@@ -1,0 +1,9 @@
+{
+  "width": 400,
+  "height": 300,
+  "color_mode": "bwr",
+  "github_username": "",
+  "output_path": "output/dashboard.png",
+  "refresh_minutes": 5,
+  "bluetooth_address": ""
+}
