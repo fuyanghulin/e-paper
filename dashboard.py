@@ -125,6 +125,21 @@ def fit(draw, text, face, max_width):
     return text + '…'
 
 
+def draw_progress(im, bounds, remaining, fill):
+    """Clip the fill to the same rounded outline so its left edge fits exactly."""
+    x0, y0, x1, y1 = bounds
+    if remaining is not None and remaining > 0:
+        mask = Image.new('1', im.size, 0)
+        shape = ImageDraw.Draw(mask)
+        shape.rounded_rectangle(bounds, radius=7, fill=1)
+        width = max(1, round((x1 - x0 + 1) * remaining / 100))
+        cutoff = min(x1, x0 + width - 1)
+        if cutoff < x1:
+            shape.rectangle((cutoff + 1, y0, x1, y1), fill=0)
+        im.paste(fill, (0, 0, im.width, im.height), mask)
+    ImageDraw.Draw(im).rounded_rectangle(bounds, radius=7, outline=BLACK, width=1)
+
+
 def render(codex, github, cfg, errors):
     im = Image.new('RGB', (400, 300), WHITE)
     d = ImageDraw.Draw(im)
@@ -145,10 +160,7 @@ def render(codex, github, cfg, errors):
         label = ('每周剩余' if mins == 10080 else f'{mins // 1440}天剩余' if mins and mins >= 1440 and mins % 1440 == 0 else f'{mins // 60}小时剩余' if mins and mins >= 60 and mins % 60 == 0 else f'{mins}分钟剩余' if mins else fallback)
         d.text((11, y), f'{remaining:g}%' if remaining is not None else '--%', font=f30, fill=red)
         d.text((12, y+37), label, font=f13, fill=BLACK)
-        d.rounded_rectangle((12, y+57, 181, y+71), radius=7, outline=BLACK, width=1)
-        if remaining is not None and remaining > 0:
-            length = max(1, int(167 * remaining / 100))
-            d.rounded_rectangle((13, y+58, 13 + length, y+70), radius=min(6, length // 2), fill=red)
+        draw_progress(im, (12, y+57, 181, y+71), remaining, red)
         reset = w.get('resetsAt')
         stamp = dt.datetime.fromtimestamp(reset).strftime('%m-%d %H:%M') if isinstance(reset, (int, float)) else '--'
         d.text((12, y+74), '重置 ' + stamp, font=f11, fill=BLACK)
