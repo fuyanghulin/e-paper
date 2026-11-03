@@ -14,6 +14,7 @@ from bleak import BleakScanner
 
 import dashboard
 from bluetooth_send import EpaperConnection
+from layout_editor import LayoutEditor
 
 ROOT = Path(__file__).resolve().parent
 RECORDS = ROOT / 'output' / 'history.jsonl'
@@ -50,13 +51,14 @@ class Worker:
 
         async def update(send_to_device):
             started = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            self.emit('status', '正在获取 Codex 和 GitHub 数据…')
+            self.emit('status', '正在获取所选组件的数据…')
             try:
                 success = await asyncio.to_thread(dashboard.run_once, dict(self.config))
                 self.emit('preview', None)
                 if not success:
                     self.emit('record', (started, '获取失败或数据不完整，未发送'))
-                    return
+                    self.emit('status', '部分组件获取失败，已生成不完整的预览')
+                    return False
                 if send_to_device:
                     if not conn or not conn.connected:
                         raise RuntimeError('获取完成后蓝牙已断开，未发送')
@@ -68,10 +70,13 @@ class Worker:
                     self.emit('record', (started, '获取成功，刷新命令已发送'))
                 else:
                     self.emit('record', (started, '获取成功，已生成预览（未传图）'))
+                return True
             except Exception as exc:
                 self.emit('record', (started, f'更新失败：{exc}'))
+                self.emit('status', f'更新失败：{exc}')
                 if send_to_device:
                     raise
+                return False
 
         try:
             while not stopping:
@@ -126,12 +131,18 @@ class Worker:
                     no_address_reported = False
                     next_connect = 0
                     next_update = float('inf')
+                elif kind == 'components':
+                    self.config.update(value)
+                    if conn:
+                        next_update = 0
+                    elif await update(False):
+                        self.emit('status', '预览已更新；连接设备后自动传图')
                 elif kind == 'refresh':
                     if conn:
                         next_update = 0
                     else:
-                        await update(False)
-                        self.emit('status', '预览已更新；连接设备后自动传图')
+                        if await update(False):
+                            self.emit('status', '预览已更新；连接设备后自动传图')
                 elif kind == 'scan':
                     self.emit('scan_state', True)
                     try:
@@ -151,8 +162,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title('墨水屏仪表盘')
-        self.geometry('920x650')
-        self.minsize(840, 590)
+        self.geometry('980x740')
+        self.minsize(900, 680)
         self.config_data = json.loads((ROOT / 'config.json').read_text(encoding='utf-8'))
         self.events = queue.Queue()
         self.address = tk.StringVar(value=self.config_data.get('bluetooth_address', ''))
@@ -206,17 +217,48 @@ class App(tk.Tk):
         self.preview.pack(fill='both', expand=True)
         ttk.Button(left, text='立即更新', command=lambda: self.worker.command('refresh')).pack(anchor='w')
         ttk.Label(left, text='未连接时仅生成预览；连接后自动传图。', style='Sub.TLabel', wraplength=400).pack(anchor='w', pady=5)
-        right = ttk.LabelFrame(content, text='获取记录', style='Card.TLabelframe')
+        right = ttk.Frame(content)
         right.pack(side='left', fill='both', expand=True)
-        self.history = ttk.Treeview(right, columns=('time', 'result'), show='headings', height=13)
+        components = ttk.LabelFrame(right, text='显示组件', style='Card.TLabelframe')
+        components.pack(fill='x', pady=(0, 8))
+        ttk.Label(components, text='拖拽组件，按网格安排屏幕位置。', style='Sub.TLabel').pack(anchor='w')
+        ttk.Button(components, text='设计布局…', command=self.open_layout_editor).pack(anchor='w', pady=(8, 0))
+        history_frame = ttk.LabelFrame(right, text='获取记录', style='Card.TLabelframe')
+        history_frame.pack(fill='both', expand=True)
+        self.history = ttk.Treeview(history_frame, columns=('time', 'result'), show='headings', height=13)
         self.history.heading('time', text='获取时间')
         self.history.heading('result', text='结果')
         self.history.column('time', width=145, minwidth=125, stretch=False)
         self.history.column('result', width=190, minwidth=100)
-        scroll = ttk.Scrollbar(right, orient='vertical', command=self.history.yview)
+        scroll = ttk.Scrollbar(history_frame, orient='vertical', command=self.history.yview)
         self.history.configure(yscrollcommand=scroll.set)
         scroll.pack(side='right', fill='y')
         self.history.pack(fill='both', expand=True)
+
+    def open_layout_editor(self):
+        try:
+            LayoutEditor(self, self.config_data, self.save_components)
+        except ValueError as exc:
+            messagebox.showerror('布局无效', str(exc))
+
+    def save_components(self, placements):
+        names = [entry['id'] for entry in placements]
+        layout_settings = {'components': names, 'component_layout': placements}
+        try:
+            dashboard.layout_components(layout_settings)
+        except ValueError as exc:
+            messagebox.showwarning('布局无效', str(exc))
+            return False
+        config = dict(self.config_data, **layout_settings)
+        try:
+            (ROOT / 'config.json').write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        except OSError as exc:
+            messagebox.showerror('保存失败', str(exc))
+            return False
+        self.config_data = config
+        self.worker.command('components', layout_settings)
+        self.status.set('布局已保存，正在更新。')
+        return True
 
     def select_device(self, _event):
         value = self.address.get()
