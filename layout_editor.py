@@ -43,12 +43,15 @@ class LayoutEditor(tk.Toplevel):
         self.library.bind('<ButtonPress-1>', self.library_press)
         self.library.bind('<B1-Motion>', self.drag_motion)
         self.library.bind('<ButtonRelease-1>', self.drag_release)
-        self.canvas = tk.Canvas(outer, width=400, height=282, bg='white', highlightthickness=1, highlightbackground='#64748b', cursor='hand2')
+        self.canvas = tk.Canvas(outer, width=400, height=282, bg='white', highlightthickness=1,
+                                highlightbackground='#64748b', cursor='hand2')
         self.canvas.grid(row=1, column=1, padx=(14, 0), pady=6)
         self.canvas.bind('<ButtonPress-1>', self.canvas_press)
         self.canvas.bind('<B1-Motion>', self.drag_motion)
         self.canvas.bind('<ButtonRelease-1>', self.drag_release)
-        ttk.Label(outer, textvariable=self.message, foreground='#526477', wraplength=660).grid(row=2, column=0, columnspan=2, sticky='w', pady=(2, 8))
+        ttk.Label(outer, textvariable=self.message, foreground='#526477', wraplength=660).grid(row=2, column=0,
+                                                                                               columnspan=2, sticky='w',
+                                                                                               pady=(2, 8))
         actions = ttk.Frame(outer)
         actions.grid(row=3, column=0, columnspan=2, sticky='ew')
         ttk.Button(actions, text='移除选中组件', command=self.remove_selected).pack(side='left')
@@ -123,8 +126,10 @@ class LayoutEditor(tk.Toplevel):
 
     def canvas_press(self, event):
         self.selected = next((entry['id'] for entry in reversed(self.placements)
-                              if entry['x'] <= event.x < entry['x'] + dashboard.COMPONENT_SIZES[dashboard.COMPONENTS[entry['id']]['size']][0]
-                              and entry['y'] <= event.y < entry['y'] + dashboard.COMPONENT_SIZES[dashboard.COMPONENTS[entry['id']]['size']][1]), None)
+                              if entry['x'] <= event.x < entry['x'] +
+                              dashboard.COMPONENT_SIZES[dashboard.COMPONENTS[entry['id']]['size']][0]
+                              and entry['y'] <= event.y < entry['y'] +
+                              dashboard.COMPONENT_SIZES[dashboard.COMPONENTS[entry['id']]['size']][1]), None)
         self.drag = ('canvas', self.selected) if self.selected else None
         if self.selected:
             entry = next(item for item in self.placements if item['id'] == self.selected)
@@ -194,13 +199,14 @@ class LayoutEditor(tk.Toplevel):
             preferred = (previous['x'] - x, previous['y'] - y)
             offsets = [(dx, dy) for dx in (-200, 0, 200) for dy in (-141, 0, 141)]
             offsets.sort(key=lambda offset: abs(offset[0] - preferred[0]) // 200 +
-                         abs(offset[1] - preferred[1]) // 141)
+                                            abs(offset[1] - preferred[1]) // 141)
             for dx, dy in offsets:
                 replacements = [dict(entry, x=entry['x'] + dx, y=entry['y'] + dy)
                                 for entry in covered]
                 candidate = others + replacements + [placed]
                 try:
-                    dashboard.layout_components({'components': [item['id'] for item in candidate], 'component_layout': candidate})
+                    dashboard.layout_components(
+                        {'components': [item['id'] for item in candidate], 'component_layout': candidate})
                 except ValueError:
                     continue
                 swapped = True
@@ -208,7 +214,8 @@ class LayoutEditor(tk.Toplevel):
         if not swapped:
             candidate = others + [placed]
         try:
-            dashboard.layout_components({'components': [item['id'] for item in candidate], 'component_layout': candidate})
+            dashboard.layout_components(
+                {'components': [item['id'] for item in candidate], 'component_layout': candidate})
         except ValueError as exc:
             self.message.set(f'无法放置组件：{exc}')
         else:

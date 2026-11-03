@@ -19,7 +19,9 @@ def executable(name):
 
 
 def font(size, bold=False):
-    paths = ([r'C:\Windows\Fonts\msyhbd.ttc', r'C:\Windows\Fonts\simhei.ttf'] if bold else [r'C:\Windows\Fonts\msyh.ttc', r'C:\Windows\Fonts\simsun.ttc'])
+    paths = (
+        [r'C:\Windows\Fonts\msyhbd.ttc', r'C:\Windows\Fonts\simhei.ttf'] if bold else [r'C:\Windows\Fonts\msyh.ttc',
+                                                                                       r'C:\Windows\Fonts\simsun.ttc'])
     paths += ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf']
     for path in paths:
         if os.path.exists(path):

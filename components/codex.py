@@ -17,13 +17,17 @@ def codex_data():
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                             text=True, encoding='utf-8', errors='replace', bufsize=1)
     lines = queue.Queue()
+
     def read_lines():
         for line in proc.stdout:
             lines.put(line)
+
     threading.Thread(target=read_lines, daemon=True).start()
+
     def send(message):
         proc.stdin.write(json.dumps(message, ensure_ascii=False) + '\n')
         proc.stdin.flush()
+
     def receive(request_id, timeout=25):
         deadline = time.monotonic() + timeout
         while True:
@@ -38,8 +42,10 @@ def codex_data():
                 if 'error' in obj:
                     raise RuntimeError(obj['error'].get('message', 'Codex 请求失败'))
                 return obj.get('result', {})
+
     try:
-        send({'id': 1, 'method': 'initialize', 'params': {'clientInfo': {'name': 'epaper_dashboard', 'title': 'E-paper Dashboard', 'version': '1.0'}}})
+        send({'id': 1, 'method': 'initialize',
+              'params': {'clientInfo': {'name': 'epaper_dashboard', 'title': 'E-paper Dashboard', 'version': '1.0'}}})
         receive(1)
         send({'method': 'initialized', 'params': {}})
         send({'id': 2, 'method': 'account/rateLimits/read'})
@@ -62,8 +68,8 @@ def codex_data():
 
 def compact(n):
     if n is None: return '--'
-    if n >= 100_000_000: return f'{n/100_000_000:.1f}亿'
-    if n >= 10_000: return f'{n/10_000:.1f}万'
+    if n >= 100_000_000: return f'{n / 100_000_000:.1f}亿'
+    if n >= 10_000: return f'{n / 10_000:.1f}万'
     return str(n)
 
 
@@ -91,18 +97,21 @@ def draw_codex(codex, cfg):
         used = w.get('usedPercent')
         remaining = max(0, min(100, 100 - used)) if isinstance(used, (int, float)) else None
         mins = w.get('windowDurationMins')
-        label = ('每周剩余' if mins == 10080 else f'{mins // 1440}天剩余' if mins and mins >= 1440 and mins % 1440 == 0 else f'{mins // 60}小时剩余' if mins and mins >= 60 and mins % 60 == 0 else f'{mins}分钟剩余' if mins else fallback)
+        label = (
+            '每周剩余' if mins == 10080 else f'{mins // 1440}天剩余' if mins and mins >= 1440 and mins % 1440 == 0 else f'{mins // 60}小时剩余' if mins and mins >= 60 and mins % 60 == 0 else f'{mins}分钟剩余' if mins else fallback)
         d.text((11, y), f'{remaining:g}%' if remaining is not None else '--%', font=f30, fill=red)
-        d.text((12, y+37), label, font=f13, fill=BLACK)
-        draw_progress(im, (12, y+57, 181, y+71), remaining, red)
+        d.text((12, y + 37), label, font=f13, fill=BLACK)
+        draw_progress(im, (12, y + 57, 181, y + 71), remaining, red)
         reset = w.get('resetsAt')
         stamp = dt.datetime.fromtimestamp(reset).strftime('%m-%d %H:%M') if isinstance(reset, (int, float)) else '--'
-        d.text((12, y+74), '重置 ' + stamp, font=f11, fill=BLACK)
+        d.text((12, y + 74), '重置 ' + stamp, font=f11, fill=BLACK)
     usage = codex.get('usage', {}) if codex else {}
     lifetime = (usage.get('summary') or {}).get('lifetimeTokens')
     buckets = usage.get('dailyUsageBuckets')
     today = dt.date.today()
-    values = [b.get('tokens') for b in buckets or [] if (today-dt.timedelta(days=6)).isoformat() <= str(b.get('startDate', ''))[:10] <= today.isoformat() and isinstance(b.get('tokens'), (int, float))]
+    values = [b.get('tokens') for b in buckets or [] if
+              (today - dt.timedelta(days=6)).isoformat() <= str(b.get('startDate', ''))[
+                  :10] <= today.isoformat() and isinstance(b.get('tokens'), (int, float))]
     recent = sum(values) if buckets is not None else None
     d.line((99, 247, 99, 279), fill=BLACK)
     d.text((11, 244), '累计 Token', font=f11, fill=BLACK)
@@ -122,4 +131,5 @@ def preview_data():
             'usage': {'summary': {'lifetimeTokens': 1200000}, 'dailyUsageBuckets': []}}
 
 
-COMPONENT = {'preview_data': preview_data, 'id': 'codex', 'label': 'Codex', 'size': 'half', 'fetch': fetch, 'draw': draw_codex}
+COMPONENT = {'preview_data': preview_data, 'id': 'codex', 'label': 'Codex', 'size': 'half', 'fetch': fetch,
+             'draw': draw_codex}

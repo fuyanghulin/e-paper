@@ -20,15 +20,16 @@ def image_planes(image, mode):
     black, red = bytearray(15000), bytearray(15000)
     for i, (r, g, b) in enumerate(image.getdata()):
         bit = 0x80 >> (i % 8)
-        if 0.299*r + 0.587*g + 0.114*b >= 140: black[i//8] |= bit
-        if not (r > 160 and r > g and r > b): red[i//8] |= bit
+        if 0.299 * r + 0.587 * g + 0.114 * b >= 140: black[i // 8] |= bit
+        if not (r > 160 and r > g and r > b): red[i // 8] |= bit
     return [bytes(black), bytes(red)] if mode == 'bwr' else [bytes(black)]
 
 
 async def scan():
     print('扫描蓝牙设备 8 秒……')
     for device in await BleakScanner.discover(timeout=8):
-        print(f'{device.address}  {device.name or "(无名称)"}')
+        if device.name and device.name.upper().startswith('NRF'):
+            print(f'{device.address}  {device.name}')
 
 
 class EpaperConnection:
@@ -74,7 +75,8 @@ class EpaperConnection:
             conf = self.config
             if len(conf) < 8 or conf[7] != expected:
                 current = f'0x{conf[7]:02x}' if len(conf) >= 8 else '未知'
-                raise RuntimeError(f'设备驱动配置为 {current}，预期 SSD1619 {self.mode} (0x{expected:02x})；请先在原项目网页中配置驱动和引脚')
+                raise RuntimeError(
+                    f'设备驱动配置为 {current}，预期 SSD1619 {self.mode} (0x{expected:02x})；请先在原项目网页中配置驱动和引脚')
         except BaseException:
             await self.close()
             raise
@@ -87,8 +89,9 @@ class EpaperConnection:
         for plane, data in enumerate(planes):
             for offset in range(0, len(data), 18):
                 first = offset == 0
-                flag = ((plane | (2 if first else 0)) if self.rle else ((0x0f if plane == 0 else 0) | (0 if first else 0xf0)))
-                await client.write_gatt_char(CHAR, bytes((0x30, flag)) + data[offset:offset+18], response=True)
+                flag = ((plane | (2 if first else 0)) if self.rle else (
+                            (0x0f if plane == 0 else 0) | (0 if first else 0xf0)))
+                await client.write_gatt_char(CHAR, bytes((0x30, flag)) + data[offset:offset + 18], response=True)
         await client.write_gatt_char(CHAR, b'\x05', response=True)
 
     async def close(self):

@@ -16,13 +16,14 @@ QUERY = '''query($login:String!, $from:DateTime!, $to:DateTime!) {
 def github_data(username=''):
     gh = executable('gh')
     if not username:
-        p = subprocess.run(gh + ['api', 'user', '--jq', '.login'], capture_output=True, text=True, encoding='utf-8', timeout=20, check=True)
+        p = subprocess.run(gh + ['api', 'user', '--jq', '.login'], capture_output=True, text=True, encoding='utf-8',
+                           timeout=20, check=True)
         username = p.stdout.strip()
     today = dt.datetime.now(dt.timezone.utc)
     start = today - dt.timedelta(days=364)
-    p = subprocess.run(gh + ['api', 'graphql', '-f', 'query='+QUERY, '-f', 'login='+username,
-                             '-f', 'from='+start.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                             '-f', 'to='+today.strftime('%Y-%m-%dT%H:%M:%SZ')],
+    p = subprocess.run(gh + ['api', 'graphql', '-f', 'query=' + QUERY, '-f', 'login=' + username,
+                             '-f', 'from=' + start.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                             '-f', 'to=' + today.strftime('%Y-%m-%dT%H:%M:%SZ')],
                        capture_output=True, text=True, encoding='utf-8', timeout=30, check=True)
     payload = json.loads(p.stdout)
     if payload.get('errors') or not payload.get('data', {}).get('user'):
@@ -48,23 +49,25 @@ def draw_github(github, cfg):
         # Like the reference, show larger cells for the most recent 15 weeks.
         for x, week in enumerate(weeks[-15:]):
             for day in week.get('contributionDays', []):
-                try: row = (dt.date.fromisoformat(day['date']).weekday()+1) % 7
-                except (ValueError, KeyError): continue
+                try:
+                    row = (dt.date.fromisoformat(day['date']).weekday() + 1) % 7
+                except (ValueError, KeyError):
+                    continue
                 count = day.get('contributionCount', 0)
-                x0, y0 = 209+x*12, 61+row*10
-                d.rounded_rectangle((x0, y0, x0+9, y0+8), radius=1, outline=BLACK, fill=BLACK if count else WHITE)
+                x0, y0 = 209 + x * 12, 61 + row * 10
+                d.rounded_rectangle((x0, y0, x0 + 9, y0 + 8), radius=1, outline=BLACK, fill=BLACK if count else WHITE)
         d.text((209, 145), '贡献活动', font=f13, fill=BLACK)
         repos = github.get('commitContributionsByRepository') or []
         if not repos: d.text((209, 169), '暂无仓库贡献', font=f12, fill=BLACK)
         maximum = max((r['contributions']['totalCount'] for r in repos), default=1) or 1
         for i, repo in enumerate(repos[:3]):
-            y = 169 + i*37
+            y = 169 + i * 37
             name = repo['repository']['nameWithOwner'].split('/')[-1]
             count = repo['contributions']['totalCount']
             d.text((209, y), fit(d, name, f11, 178), font=f11, fill=BLACK)
-            d.text((209, y+15), f'{count} commits', font=f10, fill=BLACK)
+            d.text((209, y + 15), f'{count} commits', font=f10, fill=BLACK)
             length = int(90 * count / maximum)
-            if length: d.rounded_rectangle((389-length, y+19, 389, y+25), radius=2, fill=red if i == 0 else BLACK)
+            if length: d.rounded_rectangle((389 - length, y + 19, 389, y + 25), radius=2, fill=red if i == 0 else BLACK)
     else:
         d.text((209, 55), 'GitHub 数据不可用', font=f12, fill=BLACK)
     return im.crop((200, 0, 400, 282))
@@ -86,4 +89,5 @@ def preview_data():
             'commitContributionsByRepository': repos}
 
 
-COMPONENT = {'preview_data': preview_data, 'id': 'github', 'label': 'GitHub', 'size': 'half', 'fetch': fetch, 'draw': draw_github}
+COMPONENT = {'preview_data': preview_data, 'id': 'github', 'label': 'GitHub', 'size': 'half', 'fetch': fetch,
+             'draw': draw_github}

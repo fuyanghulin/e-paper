@@ -147,7 +147,8 @@ class Worker:
                     self.emit('scan_state', True)
                     try:
                         found = await BleakScanner.discover(timeout=8)
-                        items = [(d.name or '(无名称)', d.address) for d in found]
+                        items = [(d.name, d.address) for d in found
+                                 if d.name and d.name.upper().startswith('NRF')]
                         self.emit('scan_results', items)
                     except Exception as exc:
                         self.emit('status', f'扫描失败：{exc}')
@@ -191,7 +192,8 @@ class App(tk.Tk):
         outer = ttk.Frame(self, padding=(20, 15))
         outer.pack(fill='both', expand=True)
         ttk.Label(outer, text='墨水屏仪表盘', style='Title.TLabel').pack(anchor='w')
-        ttk.Label(outer, text='4.2 英寸 · 400 × 300 · SSD1619    /    连接后每 5 分钟自动更新', style='Sub.TLabel').pack(anchor='w', pady=(0, 10))
+        ttk.Label(outer, text='4.2 英寸 · 400 × 300 · SSD1619    /    连接后每 5 分钟自动更新',
+                  style='Sub.TLabel').pack(anchor='w', pady=(0, 10))
         setup = ttk.LabelFrame(outer, text='蓝牙设备', style='Card.TLabelframe')
         setup.pack(fill='x')
         ttk.Label(setup, text='设备地址').grid(row=0, column=0, sticky='w', padx=(0, 8))
@@ -201,11 +203,15 @@ class App(tk.Tk):
         self.scan_button = ttk.Button(setup, text='扫描设备', command=lambda: self.worker.command('scan'))
         self.scan_button.grid(row=0, column=2, padx=7)
         ttk.Label(setup, text='屏幕颜色').grid(row=0, column=3, padx=(6, 5))
-        ttk.Combobox(setup, textvariable=self.mode, values=('bwr', 'bw'), state='readonly', width=6).grid(row=0, column=4)
+        ttk.Combobox(setup, textvariable=self.mode, values=('bwr', 'bw'), state='readonly', width=6).grid(row=0,
+                                                                                                          column=4)
         ttk.Button(setup, text='保存并连接', command=self.save_settings).grid(row=0, column=5, padx=(8, 0))
         setup.columnconfigure(1, weight=1)
-        ttk.Label(setup, textvariable=self.connection, foreground='#176a45').grid(row=1, column=0, columnspan=6, sticky='w', pady=(9, 0))
-        ttk.Label(setup, textvariable=self.status, foreground='#5c6874', wraplength=820).grid(row=2, column=0, columnspan=6, sticky='w', pady=(3, 0))
+        ttk.Label(setup, textvariable=self.connection, foreground='#176a45').grid(row=1, column=0, columnspan=6,
+                                                                                  sticky='w', pady=(9, 0))
+        ttk.Label(setup, textvariable=self.status, foreground='#5c6874', wraplength=820).grid(row=2, column=0,
+                                                                                              columnspan=6, sticky='w',
+                                                                                              pady=(3, 0))
         content = ttk.Frame(outer)
         content.pack(fill='both', expand=True, pady=(12, 0))
         left = ttk.LabelFrame(content, text='屏幕预览', style='Card.TLabelframe')
@@ -216,7 +222,8 @@ class App(tk.Tk):
         self.preview = tk.Label(preview_frame, text='暂无预览', bg='white')
         self.preview.pack(fill='both', expand=True)
         ttk.Button(left, text='立即更新', command=lambda: self.worker.command('refresh')).pack(anchor='w')
-        ttk.Label(left, text='未连接时仅生成预览；连接后自动传图。', style='Sub.TLabel', wraplength=400).pack(anchor='w', pady=5)
+        ttk.Label(left, text='未连接时仅生成预览；连接后自动传图。', style='Sub.TLabel', wraplength=400).pack(anchor='w',
+                                                                                                            pady=5)
         right = ttk.Frame(content)
         right.pack(side='left', fill='both', expand=True)
         components = ttk.LabelFrame(right, text='显示组件', style='Card.TLabelframe')
@@ -272,7 +279,8 @@ class App(tk.Tk):
             return
         self.config_data.update(bluetooth_address=address, color_mode=self.mode.get(), refresh_minutes=5)
         try:
-            (ROOT / 'config.json').write_text(json.dumps(self.config_data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            (ROOT / 'config.json').write_text(json.dumps(self.config_data, ensure_ascii=False, indent=2) + '\n',
+                                              encoding='utf-8')
         except OSError as exc:
             messagebox.showerror('保存失败', str(exc))
             return
@@ -311,11 +319,16 @@ class App(tk.Tk):
         try:
             while True:
                 kind, value = self.events.get_nowait()
-                if kind == 'connection': self.connection.set(value)
-                elif kind == 'status': self.status.set(value)
-                elif kind == 'preview': self.show_preview()
-                elif kind == 'record': self.add_record(*value)
-                elif kind == 'scan_state': self.scan_button.configure(state='disabled' if value else 'normal')
+                if kind == 'connection':
+                    self.connection.set(value)
+                elif kind == 'status':
+                    self.status.set(value)
+                elif kind == 'preview':
+                    self.show_preview()
+                elif kind == 'record':
+                    self.add_record(*value)
+                elif kind == 'scan_state':
+                    self.scan_button.configure(state='disabled' if value else 'normal')
                 elif kind == 'scan_results':
                     self.device_list['values'] = [f'{name} | {address}' for name, address in value]
                     self.status.set(f'扫描到 {len(value)} 个设备，请在下拉列表中选择并保存。')

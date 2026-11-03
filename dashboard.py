@@ -150,5 +150,7 @@ def main():
 
 
 if __name__ == '__main__':
-    try: sys.exit(main())
-    except KeyboardInterrupt: print('\n已停止')
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print('\n已停止')
