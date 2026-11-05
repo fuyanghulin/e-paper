@@ -7,13 +7,18 @@
   "refresh_minutes": 5,
   "bluetooth_address": "",
   "components": [
-    "pet_panda",
-    "pet_corgi",
-    "codex"
+    "codex",
+    "oa_tasks_quarter",
+    "pet_corgi"
   ],
   "component_layout": [
     {
-      "id": "pet_panda",
+      "id": "codex",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "oa_tasks_quarter",
       "x": 200,
       "y": 0
     },
@@ -21,11 +26,6 @@
       "id": "pet_corgi",
       "x": 200,
       "y": 141
-    },
-    {
-      "id": "codex",
-      "x": 0,
-      "y": 0
     }
   ]
 }

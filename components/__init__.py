@@ -3,5 +3,6 @@ from .codex import COMPONENT as codex
 from .github import COMPONENT as github
 from .pet_panda import COMPONENT as panda
 from .pet_corgi import COMPONENT as corgi
+from .oa_tasks import COMPONENTS as oa_tasks
 
-COMPONENTS = {component['id']: component for component in (codex, github, panda, corgi)}
+COMPONENTS = {component['id']: component for component in (codex, github, panda, corgi, *oa_tasks)}
