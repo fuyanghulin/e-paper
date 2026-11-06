@@ -1,4 +1,5 @@
 """Shared drawing and command helpers for dashboard components."""
+from functools import lru_cache
 import os
 from pathlib import Path
 import shutil
@@ -18,6 +19,7 @@ def executable(name):
     return [os.environ.get('COMSPEC', 'cmd.exe'), '/d', '/s', '/c', path] if path.lower().endswith('.cmd') else [path]
 
 
+@lru_cache(maxsize=None)
 def font(size, bold=False):
     paths = (
         [r'C:\Windows\Fonts\msyhbd.ttc', r'C:\Windows\Fonts\simhei.ttf'] if bold else [r'C:\Windows\Fonts\msyh.ttc',

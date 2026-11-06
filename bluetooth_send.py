@@ -4,7 +4,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops
 from bleak import BleakClient, BleakScanner
 
 ROOT = Path(__file__).resolve().parent
@@ -17,12 +17,14 @@ def image_planes(image, mode):
     image = image.convert('RGB')
     if image.size != (400, 300):
         raise ValueError('图片必须是 400×300')
-    black, red = bytearray(15000), bytearray(15000)
-    for i, (r, g, b) in enumerate(image.getdata()):
-        bit = 0x80 >> (i % 8)
-        if 0.299 * r + 0.587 * g + 0.114 * b >= 140: black[i // 8] |= bit
-        if not (r > 160 and r > g and r > b): red[i // 8] |= bit
-    return [bytes(black), bytes(red)] if mode == 'bwr' else [bytes(black)]
+    black = image.convert('L').point(lambda v: 255 if v >= 140 else 0, mode='1').tobytes()
+    r, g, b = image.split()
+    red_mask = r.point(lambda v: 255 if v > 160 else 0)
+    for other in (g, b):
+        greater = ImageChops.subtract(r, other).point(lambda v: 255 if v > 0 else 0)
+        red_mask = ImageChops.darker(red_mask, greater)
+    red = red_mask.point(lambda v: 0 if v else 255, mode='1').tobytes()
+    return [black, red] if mode == 'bwr' else [black]
 
 
 async def scan():

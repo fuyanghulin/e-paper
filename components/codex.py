@@ -9,7 +9,7 @@ import time
 
 from PIL import Image, ImageDraw
 
-from .common import BLACK, component_canvas, executable
+from .common import BLACK, component_canvas, executable, font
 
 
 def codex_data():
@@ -92,7 +92,7 @@ def draw_codex(codex, cfg):
     im, d, red, fonts = component_canvas(cfg, 'openai', 'Codex', 12, 42)
     f10, f11, f12, f13, f16, f19, f30 = fonts
     limits = codex.get('limits', {}) if codex else {}
-    for key, y, fallback in [('primary', 41, '短期限额'), ('secondary', 145, '每周限额')]:
+    for key, y, fallback in [('primary', 41, '短期限额'), ('secondary', 135, '每周限额')]:
         w = limits.get(key) or {}
         used = w.get('usedPercent')
         remaining = max(0, min(100, 100 - used)) if isinstance(used, (int, float)) else None
@@ -100,11 +100,16 @@ def draw_codex(codex, cfg):
         label = (
             '每周剩余' if mins == 10080 else f'{mins // 1440}天剩余' if mins and mins >= 1440 and mins % 1440 == 0 else f'{mins // 60}小时剩余' if mins and mins >= 60 and mins % 60 == 0 else f'{mins}分钟剩余' if mins else fallback)
         d.text((11, y), f'{remaining:g}%' if remaining is not None else '--%', font=f30, fill=red)
-        d.text((12, y + 37), label, font=f13, fill=BLACK)
-        draw_progress(im, (12, y + 57, 181, y + 71), remaining, red)
         reset = w.get('resetsAt')
         stamp = dt.datetime.fromtimestamp(reset).strftime('%m-%d %H:%M') if isinstance(reset, (int, float)) else '--'
-        d.text((12, y + 74), '重置 ' + stamp, font=f11, fill=BLACK)
+        detail = f'{label}  重置 {stamp}'
+        detail_font = f13
+        for size in (12, 11, 10):
+            if d.textlength(detail, font=detail_font) <= 176:
+                break
+            detail_font = font(size, bold=True)
+        d.text((12, y + 37), detail, font=detail_font, fill=BLACK)
+        draw_progress(im, (12, y + 57, 181, y + 71), remaining, red)
     usage = codex.get('usage', {}) if codex else {}
     lifetime = (usage.get('summary') or {}).get('lifetimeTokens')
     buckets = usage.get('dailyUsageBuckets')
@@ -113,11 +118,17 @@ def draw_codex(codex, cfg):
               (today - dt.timedelta(days=6)).isoformat() <= str(b.get('startDate', ''))[
                   :10] <= today.isoformat() and isinstance(b.get('tokens'), (int, float))]
     recent = sum(values) if buckets is not None else None
-    d.line((99, 247, 99, 279), fill=BLACK)
-    d.text((11, 244), '累计 Token', font=f11, fill=BLACK)
-    d.text((105, 244), '近7日 Token', font=f11, fill=BLACK)
-    d.text((11, 258), compact(lifetime), font=f19, fill=BLACK)
-    d.text((105, 258), compact(recent), font=f19, fill=BLACK)
+    d.line((99, 232, 99, 279), fill=BLACK)
+    d.text((11, 229), '累计 Token', font=f13, fill=BLACK)
+    d.text((105, 229), '近7日 Token', font=f13, fill=BLACK)
+    for x, value, width in ((11, lifetime, 84), (105, recent, 84)):
+        text = compact(value)
+        value_font = font(22, bold=True)
+        for size in range(21, 9, -1):
+            if d.textlength(text, font=value_font) <= width:
+                break
+            value_font = font(size, bold=True)
+        d.text((x, 251), text, font=value_font, fill=BLACK)
     return im.crop((0, 0, 200, 282))
 
 

@@ -3,7 +3,7 @@ import datetime as dt
 import json
 import subprocess
 
-from .common import BLACK, WHITE, component_canvas, executable
+from .common import BLACK, WHITE, component_canvas, executable, font
 
 QUERY = '''query($login:String!, $from:DateTime!, $to:DateTime!) {
  user(login:$login) { login contributionsCollection(from:$from,to:$to) {
@@ -44,7 +44,7 @@ def draw_github(github, cfg):
     f10, f11, f12, f13, f16, f19, f30 = fonts
     if github:
         cal = github.get('contributionCalendar') or {}
-        d.text((209, 43), f"{cal.get('totalContributions', 0)} 次贡献 · 近一年", font=f11, fill=BLACK)
+        d.text((209, 43), f"{cal.get('totalContributions', 0)} 次贡献 · 近一年", font=font(14), fill=BLACK)
         weeks = cal.get('weeks') or []
         # Like the reference, show larger cells for the most recent 15 weeks.
         for x, week in enumerate(weeks[-15:]):
@@ -56,7 +56,7 @@ def draw_github(github, cfg):
                 count = day.get('contributionCount', 0)
                 x0, y0 = 209 + x * 12, 61 + row * 10
                 d.rounded_rectangle((x0, y0, x0 + 9, y0 + 8), radius=1, outline=BLACK, fill=BLACK if count else WHITE)
-        d.text((209, 145), '贡献活动', font=f13, fill=BLACK)
+        d.text((209, 145), '贡献活动', font=font(17, bold=True), fill=BLACK)
         repos = github.get('commitContributionsByRepository') or []
         if not repos: d.text((209, 169), '暂无仓库贡献', font=f12, fill=BLACK)
         maximum = max((r['contributions']['totalCount'] for r in repos), default=1) or 1

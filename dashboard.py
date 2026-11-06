@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
 import json
 from pathlib import Path
@@ -115,15 +116,17 @@ def render(data, cfg, errors):
 def run_once(cfg):
     layout = layout_components(cfg)
     data, errors = {}, []
-    for name, _, _ in layout:
-        component = COMPONENTS[name]
-        try:
-            data[name] = component['fetch'](cfg)
-            print(component['label'] + ' 数据读取成功')
-        except Exception as e:
-            errors.append(name)
-            print(f"{component['label']} 数据读取失败：{e}", file=sys.stderr)
-            data[name] = None
+    with ThreadPoolExecutor(max_workers=len(layout)) as pool:
+        futures = {pool.submit(COMPONENTS[name]['fetch'], cfg): name for name, _, _ in layout}
+        for future, name in futures.items():
+            component = COMPONENTS[name]
+            try:
+                data[name] = future.result()
+                print(component['label'] + ' 数据读取成功')
+            except Exception as e:
+                errors.append(name)
+                print(f"{component['label']} 数据读取失败：{e}", file=sys.stderr)
+                data[name] = None
     path = Path(cfg.get('output_path', 'output/dashboard.png'))
     if not path.is_absolute(): path = ROOT / path
     path.parent.mkdir(parents=True, exist_ok=True)

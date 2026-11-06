@@ -1,7 +1,9 @@
 """Windows desktop controller for the e-paper dashboard."""
 import asyncio
+from collections import deque
 import datetime as dt
 import json
+import os
 from pathlib import Path
 import queue
 import threading
@@ -18,7 +20,15 @@ from layout_editor import LayoutEditor
 
 ROOT = Path(__file__).resolve().parent
 RECORDS = ROOT / 'output' / 'history.jsonl'
-INTERVAL = 300
+INTERVAL = 30*60
+HISTORY_LIMIT = 200
+HISTORY_MAX_BYTES = 256 * 1024
+
+
+def write_json_atomic(path, data):
+    temp = path.with_name(path.name + '.tmp')
+    temp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    os.replace(temp, path)
 
 
 class Worker:
@@ -43,9 +53,7 @@ class Worker:
     async def run(self):
         self.loop = asyncio.get_running_loop()
         self.commands = asyncio.Queue()
-        conn = None
-        next_connect = 0
-        next_update = float('inf')
+        next_update = 0 if self.config.get('bluetooth_address') else float('inf')
         stopping = False
         no_address_reported = False
 
@@ -60,14 +68,20 @@ class Worker:
                     self.emit('status', '部分组件获取失败，已生成不完整的预览')
                     return False
                 if send_to_device:
-                    if not conn or not conn.connected:
-                        raise RuntimeError('获取完成后蓝牙已断开，未发送')
-                    self.emit('status', '正在通过蓝牙传图…')
-                    path = Path(self.config['output_path'])
-                    if not path.is_absolute(): path = ROOT / path
-                    with Image.open(path) as image:
-                        await conn.send_image(image)
-                    self.emit('record', (started, '获取成功，刷新命令已发送'))
+                    self.emit('connection', '正在连接蓝牙…')
+                    connection = EpaperConnection(self.config['bluetooth_address'], self.config.get('color_mode', 'bwr'))
+                    try:
+                        await connection.connect()
+                        self.emit('connection', '蓝牙已连接')
+                        self.emit('status', '正在通过蓝牙传图…')
+                        path = Path(self.config['output_path'])
+                        if not path.is_absolute(): path = ROOT / path
+                        with Image.open(path) as image:
+                            await connection.send_image(image)
+                        self.emit('record', (started, '获取成功，刷新命令已发送'))
+                    finally:
+                        await connection.close()
+                        self.emit('connection', '蓝牙已断开，下次更新时连接')
                 else:
                     self.emit('record', (started, '获取成功，已生成预览（未传图）'))
                 return True
@@ -78,85 +92,54 @@ class Worker:
                     raise
                 return False
 
-        try:
-            while not stopping:
-                now = time.monotonic()
-                if conn and not conn.connected:
-                    await conn.close()
-                    conn = None
-                    self.emit('connection', '蓝牙已断开，准备重连')
-                    next_connect = now
-                    next_update = float('inf')
-                if not conn and self.config.get('bluetooth_address') and now >= next_connect:
-                    self.emit('connection', '正在连接蓝牙…')
-                    candidate = EpaperConnection(self.config['bluetooth_address'], self.config.get('color_mode', 'bwr'))
-                    try:
-                        await candidate.connect()
-                        conn = candidate
-                        self.emit('connection', '蓝牙已连接')
-                        self.emit('status', '连接成功，准备更新')
-                        next_update = time.monotonic()
-                    except Exception as exc:
-                        await candidate.close()
-                        self.emit('connection', '连接失败，30 秒后重试')
-                        self.emit('status', str(exc))
-                        next_connect = time.monotonic() + 30
-                elif not conn and not self.config.get('bluetooth_address'):
-                    if not no_address_reported:
-                        self.emit('connection', '未配置设备，请扫描或填写地址')
-                        no_address_reported = True
-                if conn and time.monotonic() >= next_update:
-                    try:
-                        await update(True)
-                    except Exception as exc:
-                        self.emit('status', f'传输异常：{exc}')
-                        await conn.close()
-                        conn = None
-                        self.emit('connection', '蓝牙已断开，30 秒后重试')
-                        next_connect = time.monotonic() + 30
-                    next_update = time.monotonic() + INTERVAL
-                    if conn:
-                        self.emit('status', '等待下一次更新（5 分钟）')
+        while not stopping:
+            if not self.config.get('bluetooth_address'):
+                if not no_address_reported:
+                    self.emit('connection', '未配置设备，请扫描或填写地址')
+                    no_address_reported = True
+            elif time.monotonic() >= next_update:
                 try:
-                    kind, value = await asyncio.wait_for(self.commands.get(), timeout=1)
-                except asyncio.TimeoutError:
-                    continue
-                if kind == 'stop':
-                    stopping = True
-                elif kind == 'settings':
-                    if conn:
-                        await conn.close()
-                        conn = None
-                    self.config.update(value)
-                    no_address_reported = False
-                    next_connect = 0
-                    next_update = float('inf')
-                elif kind == 'components':
-                    self.config.update(value)
-                    if conn:
-                        next_update = 0
-                    elif await update(False):
+                    updated = await update(True)
+                except Exception as exc:
+                    self.emit('status', f'传输异常：{exc}，30 秒后重试')
+                    next_update = time.monotonic() + 30
+                else:
+                    next_update = time.monotonic() + INTERVAL
+                    if updated:
+                        self.emit('status', '等待下一次更新（30 分钟）')
+            try:
+                kind, value = await asyncio.wait_for(self.commands.get(), timeout=1)
+            except asyncio.TimeoutError:
+                continue
+            if kind == 'stop':
+                stopping = True
+            elif kind == 'settings':
+                self.config.update(value)
+                no_address_reported = False
+                next_update = 0 if self.config.get('bluetooth_address') else float('inf')
+            elif kind == 'components':
+                self.config.update(value)
+                if self.config.get('bluetooth_address'):
+                    next_update = 0
+                elif await update(False):
+                    self.emit('status', '预览已更新；连接设备后自动传图')
+            elif kind == 'refresh':
+                if self.config.get('bluetooth_address'):
+                    next_update = 0
+                else:
+                    if await update(False):
                         self.emit('status', '预览已更新；连接设备后自动传图')
-                elif kind == 'refresh':
-                    if conn:
-                        next_update = 0
-                    else:
-                        if await update(False):
-                            self.emit('status', '预览已更新；连接设备后自动传图')
-                elif kind == 'scan':
-                    self.emit('scan_state', True)
-                    try:
-                        found = await BleakScanner.discover(timeout=8)
-                        items = [(d.name, d.address) for d in found
-                                 if d.name and d.name.upper().startswith('NRF')]
-                        self.emit('scan_results', items)
-                    except Exception as exc:
-                        self.emit('status', f'扫描失败：{exc}')
-                    finally:
-                        self.emit('scan_state', False)
-        finally:
-            if conn:
-                await conn.close()
+            elif kind == 'scan':
+                self.emit('scan_state', True)
+                try:
+                    found = await BleakScanner.discover(timeout=8)
+                    items = [(d.name, d.address) for d in found
+                             if d.name and d.name.upper().startswith('NRF')]
+                    self.emit('scan_results', items)
+                except Exception as exc:
+                    self.emit('status', f'扫描失败：{exc}')
+                finally:
+                    self.emit('scan_state', False)
 
 
 class App(tk.Tk):
@@ -192,7 +175,7 @@ class App(tk.Tk):
         outer = ttk.Frame(self, padding=(20, 15))
         outer.pack(fill='both', expand=True)
         ttk.Label(outer, text='墨水屏仪表盘', style='Title.TLabel').pack(anchor='w')
-        ttk.Label(outer, text='4.2 英寸 · 400 × 300 · SSD1619    /    连接后每 5 分钟自动更新',
+        ttk.Label(outer, text='4.2 英寸 · 400 × 300 · SSD1619    /    每 30 分钟自动更新，传图时连接蓝牙',
                   style='Sub.TLabel').pack(anchor='w', pady=(0, 10))
         setup = ttk.LabelFrame(outer, text='蓝牙设备', style='Card.TLabelframe')
         setup.pack(fill='x')
@@ -222,7 +205,7 @@ class App(tk.Tk):
         self.preview = tk.Label(preview_frame, text='暂无预览', bg='white')
         self.preview.pack(fill='both', expand=True)
         ttk.Button(left, text='立即更新', command=lambda: self.worker.command('refresh')).pack(anchor='w')
-        ttk.Label(left, text='未连接时仅生成预览；连接后自动传图。', style='Sub.TLabel', wraplength=400).pack(anchor='w',
+        ttk.Label(left, text='已配置设备时自动连接并传图，完成后断开。', style='Sub.TLabel', wraplength=400).pack(anchor='w',
                                                                                                             pady=5)
         right = ttk.Frame(content)
         right.pack(side='left', fill='both', expand=True)
@@ -258,7 +241,7 @@ class App(tk.Tk):
             return False
         config = dict(self.config_data, **layout_settings)
         try:
-            (ROOT / 'config.json').write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            write_json_atomic(ROOT / 'config.json', config)
         except OSError as exc:
             messagebox.showerror('保存失败', str(exc))
             return False
@@ -277,10 +260,9 @@ class App(tk.Tk):
         if not address:
             messagebox.showwarning('设备地址', '请先扫描选择设备或填写蓝牙地址。')
             return
-        self.config_data.update(bluetooth_address=address, color_mode=self.mode.get(), refresh_minutes=5)
+        self.config_data.update(bluetooth_address=address, color_mode=self.mode.get(), refresh_minutes=30)
         try:
-            (ROOT / 'config.json').write_text(json.dumps(self.config_data, ensure_ascii=False, indent=2) + '\n',
-                                              encoding='utf-8')
+            write_json_atomic(ROOT / 'config.json', self.config_data)
         except OSError as exc:
             messagebox.showerror('保存失败', str(exc))
             return
@@ -297,7 +279,9 @@ class App(tk.Tk):
     def load_history(self):
         if not RECORDS.exists(): return
         try:
-            for line in RECORDS.read_text(encoding='utf-8').splitlines()[-200:]:
+            with RECORDS.open('r', encoding='utf-8') as file:
+                lines = deque(file, maxlen=HISTORY_LIMIT)
+            for line in lines:
                 try:
                     record = json.loads(line)
                     self.history.insert('', 0, values=(record['time'], record['result']))
@@ -308,10 +292,19 @@ class App(tk.Tk):
 
     def add_record(self, timestamp, result):
         self.history.insert('', 0, values=(timestamp, result))
+        children = self.history.get_children()
+        if len(children) > HISTORY_LIMIT:
+            self.history.delete(*children[HISTORY_LIMIT:])
         try:
             RECORDS.parent.mkdir(parents=True, exist_ok=True)
             with RECORDS.open('a', encoding='utf-8') as file:
                 file.write(json.dumps({'time': timestamp, 'result': result}, ensure_ascii=False) + '\n')
+            if RECORDS.stat().st_size > HISTORY_MAX_BYTES:
+                with RECORDS.open('r', encoding='utf-8') as file:
+                    lines = deque(file, maxlen=HISTORY_LIMIT)
+                temp = RECORDS.with_name(RECORDS.name + '.tmp')
+                temp.write_text(''.join(lines), encoding='utf-8')
+                os.replace(temp, RECORDS)
         except OSError as exc:
             self.status.set(f'保存历史记录失败：{exc}')
 

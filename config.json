@@ -4,18 +4,18 @@
   "color_mode": "bwr",
   "github_username": "",
   "output_path": "output/dashboard.png",
-  "refresh_minutes": 5,
-  "bluetooth_address": "",
+  "refresh_minutes": 30,
+  "bluetooth_address": "EB:76:6C:92:D6:E3",
   "components": [
-    "codex",
+    "pet_corgi",
     "oa_tasks_quarter",
-    "pet_corgi"
+    "github"
   ],
   "component_layout": [
     {
-      "id": "codex",
-      "x": 0,
-      "y": 0
+      "id": "pet_corgi",
+      "x": 200,
+      "y": 141
     },
     {
       "id": "oa_tasks_quarter",
@@ -23,9 +23,9 @@
       "y": 0
     },
     {
-      "id": "pet_corgi",
-      "x": 200,
-      "y": 141
+      "id": "github",
+      "x": 0,
+      "y": 0
     }
   ]
 }
