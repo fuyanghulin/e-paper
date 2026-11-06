@@ -9,7 +9,7 @@
   "components": [
     "pet_corgi",
     "oa_tasks_quarter",
-    "github"
+    "codex"
   ],
   "component_layout": [
     {
@@ -23,7 +23,7 @@
       "y": 0
     },
     {
-      "id": "github",
+      "id": "codex",
       "x": 0,
       "y": 0
     }

@@ -118,9 +118,9 @@ def draw_codex(codex, cfg):
               (today - dt.timedelta(days=6)).isoformat() <= str(b.get('startDate', ''))[
                   :10] <= today.isoformat() and isinstance(b.get('tokens'), (int, float))]
     recent = sum(values) if buckets is not None else None
-    d.line((99, 232, 99, 279), fill=BLACK)
     d.text((11, 229), '累计 Token', font=f13, fill=BLACK)
     d.text((105, 229), '近7日 Token', font=f13, fill=BLACK)
+    left_edge = 11 + d.textlength('累计 Token', font=f13)
     for x, value, width in ((11, lifetime, 84), (105, recent, 84)):
         text = compact(value)
         value_font = font(22, bold=True)
@@ -129,6 +129,10 @@ def draw_codex(codex, cfg):
                 break
             value_font = font(size, bold=True)
         d.text((x, 251), text, font=value_font, fill=BLACK)
+        if x == 11:
+            left_edge = max(left_edge, x + d.textlength(text, font=value_font))
+    divider_x = round((left_edge + 105) / 2)
+    d.line((divider_x, 232, divider_x, 279), fill=BLACK)
     return im.crop((0, 0, 200, 282))
 
 
