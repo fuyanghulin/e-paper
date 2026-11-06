@@ -13,10 +13,12 @@ from tkinter import ttk, messagebox
 
 from PIL import Image, ImageTk
 from bleak import BleakScanner
+import pystray
 
 import dashboard
 from bluetooth_send import EpaperConnection
 from layout_editor import LayoutEditor
+from single_instance import SingleInstance
 
 ROOT = Path(__file__).resolve().parent
 RECORDS = ROOT / 'output' / 'history.jsonl'
@@ -37,6 +39,7 @@ class Worker:
         self.config = dict(config)
         self.loop = None
         self.commands = None
+        self.stop_requested = threading.Event()
         self.thread = threading.Thread(target=self._start, daemon=True)
         self.thread.start()
 
@@ -47,6 +50,8 @@ class Worker:
         self.events.put((kind, value))
 
     def command(self, kind, value=None):
+        if kind == 'stop':
+            self.stop_requested.set()
         if self.loop and self.commands:
             self.loop.call_soon_threadsafe(self.commands.put_nowait, (kind, value))
 
@@ -92,7 +97,7 @@ class Worker:
                     raise
                 return False
 
-        while not stopping:
+        while not stopping and not self.stop_requested.is_set():
             if not self.config.get('bluetooth_address'):
                 if not no_address_reported:
                     self.emit('connection', '未配置设备，请扫描或填写地址')
@@ -146,6 +151,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title('墨水屏仪表盘')
+        self.iconbitmap(default=str(ROOT / 'assets' / 'dashboard_icon.ico'))
         self.geometry('980x740')
         self.minsize(900, 680)
         self.config_data = json.loads((ROOT / 'config.json').read_text(encoding='utf-8'))
@@ -158,8 +164,29 @@ class App(tk.Tk):
         self.load_history()
         self.show_preview()
         self.worker = Worker(self.events, self.config_data)
+        self.exiting = False
+        self.tray = self.create_tray()
+        self.tray.run_detached()
         self.after(150, self.poll)
-        self.protocol('WM_DELETE_WINDOW', self.close)
+        self.protocol('WM_DELETE_WINDOW', self.hide_window)
+
+    def create_tray(self):
+        with Image.open(ROOT / 'assets' / 'dashboard_icon.png') as source:
+            icon = source.copy()
+        menu = pystray.Menu(
+            pystray.MenuItem('打开仪表盘', lambda: self.events.put(('show_window', None)), default=True),
+            pystray.MenuItem('退出程序', lambda: self.events.put(('exit', None))),
+        )
+        return pystray.Icon('epaper_dashboard', icon, '墨水屏仪表盘', menu)
+
+    def hide_window(self):
+        self.withdraw()
+
+    def show_window(self):
+        if not self.exiting:
+            self.deiconify()
+            self.lift()
+            self.focus_force()
 
     def _build(self):
         self.configure(bg='#f3f5f7')
@@ -325,14 +352,34 @@ class App(tk.Tk):
                 elif kind == 'scan_results':
                     self.device_list['values'] = [f'{name} | {address}' for name, address in value]
                     self.status.set(f'扫描到 {len(value)} 个设备，请在下拉列表中选择并保存。')
+                elif kind == 'show_window':
+                    self.show_window()
+                elif kind == 'exit':
+                    self.close()
         except queue.Empty:
             pass
+        if self.exiting and not self.worker.thread.is_alive():
+            self.tray.stop()
+            self.destroy()
+            return
         self.after(150, self.poll)
 
     def close(self):
+        if self.exiting:
+            return
+        self.exiting = True
+        self.status.set('正在退出，等待当前任务完成…')
         self.worker.command('stop')
-        self.destroy()
 
 
 if __name__ == '__main__':
-    App().mainloop()
+    instance = SingleInstance()
+    try:
+        if instance.already_running:
+            instance.notify_existing()
+        else:
+            app = App()
+            instance.listen(app.events)
+            app.mainloop()
+    finally:
+        instance.close()

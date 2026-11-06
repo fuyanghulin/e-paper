@@ -9,13 +9,14 @@ import time
 
 from PIL import Image, ImageDraw
 
-from .common import BLACK, component_canvas, executable, font
+from .common import BLACK, NO_WINDOW, component_canvas, executable, font
 
 
 def codex_data():
     proc = subprocess.Popen(executable('codex') + ['app-server'], stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            text=True, encoding='utf-8', errors='replace', bufsize=1)
+                            text=True, encoding='utf-8', errors='replace', bufsize=1,
+                            creationflags=NO_WINDOW)
     lines = queue.Queue()
 
     def read_lines():

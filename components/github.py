@@ -3,7 +3,7 @@ import datetime as dt
 import json
 import subprocess
 
-from .common import BLACK, WHITE, component_canvas, executable, font
+from .common import BLACK, WHITE, NO_WINDOW, component_canvas, executable, font
 
 QUERY = '''query($login:String!, $from:DateTime!, $to:DateTime!) {
  user(login:$login) { login contributionsCollection(from:$from,to:$to) {
@@ -17,14 +17,15 @@ def github_data(username=''):
     gh = executable('gh')
     if not username:
         p = subprocess.run(gh + ['api', 'user', '--jq', '.login'], capture_output=True, text=True, encoding='utf-8',
-                           timeout=20, check=True)
+                           timeout=20, check=True, creationflags=NO_WINDOW)
         username = p.stdout.strip()
     today = dt.datetime.now(dt.timezone.utc)
     start = today - dt.timedelta(days=364)
     p = subprocess.run(gh + ['api', 'graphql', '-f', 'query=' + QUERY, '-f', 'login=' + username,
                              '-f', 'from=' + start.strftime('%Y-%m-%dT%H:%M:%SZ'),
                              '-f', 'to=' + today.strftime('%Y-%m-%dT%H:%M:%SZ')],
-                       capture_output=True, text=True, encoding='utf-8', timeout=30, check=True)
+                       capture_output=True, text=True, encoding='utf-8', timeout=30, check=True,
+                       creationflags=NO_WINDOW)
     payload = json.loads(p.stdout)
     if payload.get('errors') or not payload.get('data', {}).get('user'):
         raise RuntimeError('GitHub 查询失败：用户不存在或无权限')

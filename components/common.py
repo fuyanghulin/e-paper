@@ -3,11 +3,13 @@ from functools import lru_cache
 import os
 from pathlib import Path
 import shutil
+import subprocess
 
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 BLACK, WHITE, RED = (0, 0, 0), (255, 255, 255), (190, 0, 25)
+NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
 
 
 def executable(name):
