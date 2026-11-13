@@ -3,6 +3,7 @@ import asyncio
 from collections import deque
 import datetime as dt
 import json
+import math
 import os
 from pathlib import Path
 import queue
@@ -103,15 +104,18 @@ class Worker:
                     self.emit('connection', '未配置设备，请扫描或填写地址')
                     no_address_reported = True
             elif time.monotonic() >= next_update:
+                self.emit('schedule', None)
                 try:
                     updated = await update(True)
                 except Exception as exc:
-                    self.emit('status', f'传输异常：{exc}，30 秒后重试')
+                    self.emit('status', f'传输异常：{exc}')
                     next_update = time.monotonic() + 30
+                    self.emit('schedule', (next_update, '重试'))
                 else:
                     next_update = time.monotonic() + INTERVAL
                     if updated:
-                        self.emit('status', '等待下一次更新（30 分钟）')
+                        self.emit('status', '')
+                    self.emit('schedule', (next_update, '更新'))
             try:
                 kind, value = await asyncio.wait_for(self.commands.get(), timeout=1)
             except asyncio.TimeoutError:
@@ -119,16 +123,19 @@ class Worker:
             if kind == 'stop':
                 stopping = True
             elif kind == 'settings':
+                self.emit('schedule', None)
                 self.config.update(value)
                 no_address_reported = False
                 next_update = 0 if self.config.get('bluetooth_address') else float('inf')
             elif kind == 'components':
+                self.emit('schedule', None)
                 self.config.update(value)
                 if self.config.get('bluetooth_address'):
                     next_update = 0
                 elif await update(False):
                     self.emit('status', '预览已更新；连接设备后自动传图')
             elif kind == 'refresh':
+                self.emit('schedule', None)
                 if self.config.get('bluetooth_address'):
                     next_update = 0
                 else:
@@ -160,6 +167,8 @@ class App(tk.Tk):
         self.mode = tk.StringVar(value=self.config_data.get('color_mode', 'bwr'))
         self.connection = tk.StringVar(value='正在启动…')
         self.status = tk.StringVar(value='首次使用请扫描设备并保存地址')
+        self.status_message = self.status.get()
+        self.next_schedule = None
         self._build()
         self.load_history()
         self.show_preview()
@@ -274,7 +283,7 @@ class App(tk.Tk):
             return False
         self.config_data = config
         self.worker.command('components', layout_settings)
-        self.status.set('布局已保存，正在更新。')
+        self.set_status('布局已保存，正在更新。')
         return True
 
     def select_device(self, _event):
@@ -315,7 +324,7 @@ class App(tk.Tk):
                 except (ValueError, KeyError):
                     continue
         except OSError as exc:
-            self.status.set(f'读取历史记录失败：{exc}')
+            self.set_status(f'读取历史记录失败：{exc}')
 
     def add_record(self, timestamp, result):
         self.history.insert('', 0, values=(timestamp, result))
@@ -333,7 +342,21 @@ class App(tk.Tk):
                 temp.write_text(''.join(lines), encoding='utf-8')
                 os.replace(temp, RECORDS)
         except OSError as exc:
-            self.status.set(f'保存历史记录失败：{exc}')
+            self.set_status(f'保存历史记录失败：{exc}')
+
+    def set_status(self, message):
+        self.status_message = message
+        self.update_status_display()
+
+    def update_status_display(self):
+        message = self.status_message
+        if self.next_schedule:
+            deadline, action = self.next_schedule
+            seconds = max(0, math.ceil(deadline - time.monotonic()))
+            minutes, seconds = divmod(seconds, 60)
+            countdown = f'距离下次{action}：{minutes:02d}:{seconds:02d}'
+            message = f'{message}；{countdown}' if message else countdown
+        self.status.set(message)
 
     def poll(self):
         try:
@@ -342,7 +365,10 @@ class App(tk.Tk):
                 if kind == 'connection':
                     self.connection.set(value)
                 elif kind == 'status':
-                    self.status.set(value)
+                    self.set_status(value)
+                elif kind == 'schedule':
+                    self.next_schedule = value
+                    self.update_status_display()
                 elif kind == 'preview':
                     self.show_preview()
                 elif kind == 'record':
@@ -351,13 +377,14 @@ class App(tk.Tk):
                     self.scan_button.configure(state='disabled' if value else 'normal')
                 elif kind == 'scan_results':
                     self.device_list['values'] = [f'{name} | {address}' for name, address in value]
-                    self.status.set(f'扫描到 {len(value)} 个设备，请在下拉列表中选择并保存。')
+                    self.set_status(f'扫描到 {len(value)} 个设备，请在下拉列表中选择并保存。')
                 elif kind == 'show_window':
                     self.show_window()
                 elif kind == 'exit':
                     self.close()
         except queue.Empty:
             pass
+        self.update_status_display()
         if self.exiting and not self.worker.thread.is_alive():
             self.tray.stop()
             self.destroy()
@@ -368,7 +395,8 @@ class App(tk.Tk):
         if self.exiting:
             return
         self.exiting = True
-        self.status.set('正在退出，等待当前任务完成…')
+        self.next_schedule = None
+        self.set_status('正在退出，等待当前任务完成…')
         self.worker.command('stop')
 
 

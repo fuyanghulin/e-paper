@@ -7,16 +7,11 @@
   "refresh_minutes": 30,
   "bluetooth_address": "EB:76:6C:92:D6:E3",
   "components": [
-    "pet_corgi",
     "oa_tasks_quarter",
-    "codex"
+    "codex",
+    "gta6"
   ],
   "component_layout": [
-    {
-      "id": "pet_corgi",
-      "x": 200,
-      "y": 141
-    },
     {
       "id": "oa_tasks_quarter",
       "x": 200,
@@ -26,6 +21,11 @@
       "id": "codex",
       "x": 0,
       "y": 0
+    },
+    {
+      "id": "gta6",
+      "x": 200,
+      "y": 141
     }
   ]
 }
