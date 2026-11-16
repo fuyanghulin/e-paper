@@ -9,7 +9,7 @@
   "components": [
     "oa_tasks_quarter",
     "codex",
-    "gta6"
+    "zelda_ocarina"
   ],
   "component_layout": [
     {
@@ -23,7 +23,7 @@
       "y": 0
     },
     {
-      "id": "gta6",
+      "id": "zelda_ocarina",
       "x": 200,
       "y": 141
     }
